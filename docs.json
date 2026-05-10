@@ -1,15 +1,14 @@
 {
   "$schema": "https://raw.githubusercontent.com/whilesmart/docs-kit/main/schema/docs.schema.json",
-  "name": "Eloquent Webhooks",
-  "description": "Webhook management package for Laravel applications",
+  "name": "Eloquent Integrations",
+  "description": "OAuth and third-party integrations package for Laravel applications",
   "icon": "shield-check",
   "category": {
     "language": "php",
     "framework": "laravel"
   },
   "sidebar": [
-    { "title": "Usage", "path": "docs/usage.md" },
-    { "title": "Verification & Security", "path": "docs/verification.md" },
-    { "title": "Events & Logging", "path": "docs/events.md" }
+    { "title": "Installation", "path": "docs/installation.md" },
+    { "title": "Customization", "path": "docs/customization.md" }
   ]
 }

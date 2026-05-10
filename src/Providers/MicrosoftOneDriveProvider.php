@@ -52,7 +52,7 @@ class MicrosoftOneDriveProvider extends AbstractOAuthProvider
         ]);
     }
 
-    public function uploadFile(string $accessToken, string $fileName, string $content, string $parentId = 'root'): array
+    public function uploadFile(string $accessToken, string $fileName, string $parentId = 'root'): array
     {
         // For small files (< 4MB) - simple upload
         $endpoint = "/v1.0/me/drive/items/{$parentId}:/{$fileName}:/content";
