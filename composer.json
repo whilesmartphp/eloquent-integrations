@@ -22,7 +22,8 @@
     "phpmd/phpmd": "@stable",
     "phpstan/phpstan": "^2.1",
     "larastan/larastan": "^3.0",
-    "squizlabs/php_codesniffer": "^4.0"
+    "squizlabs/php_codesniffer": "^4.0",
+    "whilesmart/eloquent-schema-conformance": "^1.0"
   },
   "suggest": {
     "whilesmart/eloquent-client-credentials": "For reusable local credential and secret storage",
