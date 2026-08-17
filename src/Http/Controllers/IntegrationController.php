@@ -197,8 +197,8 @@ class IntegrationController extends Controller
                 $validated['integrations_config_defaults'] ?? [],
                 $validated['overrides'] ?? [],
             );
-        } catch (RequestException $e) {
-            return $this->vaultFailure($e, $validated['provider'], $providerConfigKey);
+        } catch (RequestException $failure) {
+            return $this->vaultFailure($failure, $validated['provider'], $providerConfigKey);
         }
 
         return response()->json([
@@ -573,15 +573,15 @@ class IntegrationController extends Controller
      * person who pressed Connect. The commonest by far is a provider that was
      * never set up in the vault, which reads as a bare validation failure.
      */
-    protected function vaultFailure(RequestException $e, string $provider, string $providerConfigKey): JsonResponse
+    protected function vaultFailure(RequestException $failure, string $provider, string $providerConfigKey): JsonResponse
     {
-        $body = (string) $e->response->body();
+        $body = (string) $failure->response->body();
         $name = config('integrations.nango_providers.' . $provider . '.name', Str::headline($provider));
 
         Log::warning('Nango rejected a connect session', [
             'provider' => $provider,
             'provider_config_key' => $providerConfigKey,
-            'status' => $e->response->status(),
+            'status' => $failure->response->status(),
             'body' => $body,
         ]);
 
