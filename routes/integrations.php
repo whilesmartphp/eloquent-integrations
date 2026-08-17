@@ -23,6 +23,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/', [IntegrationController::class, 'index']);
         Route::get('/authorize/{provider}', [IntegrationController::class, 'authorize']);
         Route::post('/nango/session', [IntegrationController::class, 'nangoConnectSession']);
+        Route::post('/nango/connection', [IntegrationController::class, 'nangoConnection']);
         Route::get('/{integrationId}', [IntegrationController::class, 'show']);
         Route::patch('/{integrationId}', [IntegrationController::class, 'update']);
         Route::delete('/{integrationId}', [IntegrationController::class, 'destroy']);
@@ -33,6 +34,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/', [IntegrationController::class, 'index']);
         Route::get('/authorize/{provider}', [IntegrationController::class, 'authorize']);
         Route::post('/nango/session', [IntegrationController::class, 'nangoConnectSession']);
+        Route::post('/nango/connection', [IntegrationController::class, 'nangoConnection']);
         Route::get('/{integrationId}', [IntegrationController::class, 'show']);
         Route::patch('/{integrationId}', [IntegrationController::class, 'update']);
         Route::delete('/{integrationId}', [IntegrationController::class, 'destroy']);
