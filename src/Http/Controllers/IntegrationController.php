@@ -10,13 +10,16 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Whilesmart\Integrations\Events\ProviderWebhookForwarded;
 use Whilesmart\Integrations\IntegrationsManager;
 use Whilesmart\Integrations\Models\Integration;
 use Whilesmart\Integrations\Services\NangoClient;
 
 class IntegrationController extends Controller
 {
-    public function __construct(protected IntegrationsManager $manager) {}
+    public function __construct(protected IntegrationsManager $manager)
+    {
+    }
 
     public function index(Request $request, ?string $workspaceId = null): JsonResponse
     {
@@ -120,7 +123,7 @@ class IntegrationController extends Controller
             : [get_class($user), $user->getAuthIdentifier()];
 
         $providerConfigKey = $validated['provider_config_key']
-            ?? config('integrations.nango_providers.'.$validated['provider'].'.provider_config_key')
+            ?? config('integrations.nango_providers.' . $validated['provider'] . '.provider_config_key')
             ?? $validated['provider'];
 
         // The connection id is deterministic per owner, so only accept the one
@@ -191,7 +194,7 @@ class IntegrationController extends Controller
             : [get_class($user), $user->getAuthIdentifier()];
 
         $providerConfigKey = $validated['provider_config_key']
-            ?? config('integrations.nango_providers.'.$validated['provider'].'.provider_config_key')
+            ?? config('integrations.nango_providers.' . $validated['provider'] . '.provider_config_key')
             ?? $validated['provider'];
         $connectionId = $nango->connectionId($ownerType, $ownerId, $providerConfigKey);
 
@@ -409,7 +412,7 @@ class IntegrationController extends Controller
         } elseif ($type === 'sync') {
             $this->handleNangoSyncWebhook($payload);
         } elseif ($type === 'forward') {
-            $this->handleNangoForwardWebhook($payload);
+            $this->handleNangoForwardWebhook($payload, $request->headers->all());
         }
 
         return response()->json(['success' => true]);
@@ -474,7 +477,7 @@ class IntegrationController extends Controller
         ]);
     }
 
-    protected function handleNangoForwardWebhook(array $payload): void
+    protected function handleNangoForwardWebhook(array $payload, array $headers = []): void
     {
         $integration = Integration::externalVault('nango')
             ->where('vault_connection_id', $payload['connectionId'] ?? null)
@@ -482,6 +485,11 @@ class IntegrationController extends Controller
             ->first();
 
         if (! $integration) {
+            Log::info('Forwarded webhook matched no connection', [
+                'provider_config_key' => $payload['providerConfigKey'] ?? null,
+                'connection_id' => $payload['connectionId'] ?? null,
+            ]);
+
             return;
         }
 
@@ -489,6 +497,13 @@ class IntegrationController extends Controller
         $metadata['last_forwarded_webhook'] = $payload;
 
         $integration->update(['metadata' => $metadata]);
+
+        ProviderWebhookForwarded::dispatch(
+            $integration->refresh(),
+            $payload,
+            (array) ($payload['payload'] ?? []),
+            $headers
+        );
     }
 
     protected function findIntegration(?string $workspaceId, ?int $integrationId): ?Integration
@@ -579,7 +594,7 @@ class IntegrationController extends Controller
             return null;
         }
 
-        $model = new $type;
+        $model = new $type();
 
         return $model->newQuery()->find($connected_by_id);
     }
@@ -592,7 +607,7 @@ class IntegrationController extends Controller
     protected function vaultFailure(RequestException $failure, string $provider, string $providerConfigKey): JsonResponse
     {
         $body = (string) $failure->response->body();
-        $name = config('integrations.nango_providers.'.$provider.'.name', Str::headline($provider));
+        $name = config('integrations.nango_providers.' . $provider . '.name', Str::headline($provider));
 
         Log::warning('Nango rejected a connect session', [
             'provider' => $provider,
@@ -604,14 +619,14 @@ class IntegrationController extends Controller
         if (str_contains($body, 'Integration does not exist')) {
             return response()->json([
                 'success' => false,
-                'message' => $name.' is not available yet. It has not been set up in the connection vault.',
+                'message' => $name . ' is not available yet. It has not been set up in the connection vault.',
                 'reason' => 'provider_not_configured',
             ], 422);
         }
 
         return response()->json([
             'success' => false,
-            'message' => 'Could not start the connection to '.$name.'. Please try again.',
+            'message' => 'Could not start the connection to ' . $name . '. Please try again.',
             'reason' => 'vault_error',
         ], 422);
     }

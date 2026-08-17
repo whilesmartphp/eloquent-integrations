@@ -42,7 +42,7 @@ class NangoConnectionTest extends TestCase
 
     protected function defineDatabaseMigrations(): void
     {
-        $this->loadMigrationsFrom(__DIR__.'/../../database/migrations');
+        $this->loadMigrationsFrom(__DIR__ . '/../../database/migrations');
     }
 
     #[Test]
@@ -170,8 +170,7 @@ class NangoConnectionTest extends TestCase
 
     private function user(): object
     {
-        $model = new class extends User
-        {
+        $model = new class () extends User {
             protected $table = 'users';
 
             protected $guarded = [];

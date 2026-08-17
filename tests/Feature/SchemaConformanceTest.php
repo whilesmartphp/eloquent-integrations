@@ -61,7 +61,7 @@ class SchemaConformanceTest extends TestCase
 
     protected function defineDatabaseMigrations(): void
     {
-        $this->loadMigrationsFrom(__DIR__.'/../../database/migrations');
+        $this->loadMigrationsFrom(__DIR__ . '/../../database/migrations');
     }
 
     #[Test]
@@ -73,7 +73,7 @@ class SchemaConformanceTest extends TestCase
     #[Test]
     public function every_column_an_alter_migration_adds_is_declared(): void
     {
-        $this->assertAlteredColumnsDeclared(__DIR__.'/../../database/migrations');
+        $this->assertAlteredColumnsDeclared(__DIR__ . '/../../database/migrations');
     }
 
     #[Test]
