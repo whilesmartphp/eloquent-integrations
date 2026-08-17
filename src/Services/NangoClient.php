@@ -13,10 +13,10 @@ class NangoClient
     {
         $payload = array_filter(
             [
-            'tags' => $tags,
-            'allowed_integrations' => $allowedIntegrations,
-            'integrations_config_defaults' => $defaults,
-            'overrides' => $overrides,
+                'tags' => $tags,
+                'allowed_integrations' => $allowedIntegrations,
+                'integrations_config_defaults' => $defaults,
+                'overrides' => $overrides,
             ],
             // @phpstan-ignore-next-line
             fn ($value) => $value !== [] && $value !== null
@@ -26,6 +26,24 @@ class NangoClient
             ->post('/connect/sessions', $payload)
             ->throw()
             ->json('data', []);
+    }
+
+    /**
+     * The connection as the vault holds it, or null when it holds no such
+     * connection. Used to confirm a connection a client claims to have made.
+     */
+    public function connection(string $connectionId, string $providerConfigKey): ?array
+    {
+        $response = $this->request()
+            ->get('/connection/' . urlencode($connectionId), [
+                'provider_config_key' => $providerConfigKey,
+            ]);
+
+        if ($response->status() === 404) {
+            return null;
+        }
+
+        return $response->throw()->json();
     }
 
     public function verifyWebhook(string $rawPayload, ?string $signature): bool

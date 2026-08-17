@@ -3,12 +3,14 @@
 namespace Whilesmart\Integrations\Http\Controllers;
 
 use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Whilesmart\Integrations\Events\ProviderWebhookForwarded;
 use Whilesmart\Integrations\IntegrationsManager;
 use Whilesmart\Integrations\Models\Integration;
 use Whilesmart\Integrations\Services\NangoClient;
@@ -91,6 +93,78 @@ class IntegrationController extends Controller
         }
     }
 
+    /**
+     * Record a connection the caller has just completed in the browser. The
+     * connection is confirmed against the vault before anything is stored, so
+     * a caller cannot claim one it never made.
+     */
+    public function nangoConnection(Request $request, NangoClient $nango, ?string $workspaceId = null): JsonResponse
+    {
+        if (! config('integrations.external_vaults.nango.enabled')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Nango is not enabled.',
+            ], 400);
+        }
+
+        if ($workspaceId && ! $this->canAccessWorkspace($workspaceId)) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+
+        $validated = $request->validate([
+            'provider' => ['required', 'string', 'max:100'],
+            'provider_config_key' => ['nullable', 'string', 'max:100'],
+            'connection_id' => ['required', 'string', 'max:255'],
+        ]);
+
+        $user = $request->user();
+        [$ownerType, $ownerId] = $workspaceId
+            ? [config('integrations.workspace_model'), $workspaceId]
+            : [get_class($user), $user->getAuthIdentifier()];
+
+        $providerConfigKey = $validated['provider_config_key']
+            ?? config('integrations.nango_providers.' . $validated['provider'] . '.provider_config_key')
+            ?? $validated['provider'];
+
+        // The connection id is deterministic per owner, so only accept the one
+        // this owner would generate; otherwise a caller could claim another's.
+        if ($validated['connection_id'] !== $nango->connectionId($ownerType, $ownerId, $providerConfigKey)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'That connection does not belong to you.',
+            ], 403);
+        }
+
+        try {
+            $connection = $nango->connection($validated['connection_id'], $providerConfigKey);
+        } catch (RequestException $failure) {
+            return $this->vaultFailure($failure, $validated['provider'], $providerConfigKey);
+        }
+
+        if ($connection === null) {
+            return response()->json([
+                'success' => false,
+                'message' => 'That connection does not exist.',
+            ], 404);
+        }
+
+        $integration = $this->manager->upsertExternalVaultIntegration(
+            'nango',
+            $validated['provider'],
+            $providerConfigKey,
+            $validated['connection_id'],
+            $ownerType,
+            $ownerId,
+            $user,
+            ['nango' => $connection],
+        );
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->resource($integration),
+        ], 201);
+    }
+
     public function nangoConnectSession(Request $request, NangoClient $nango, ?string $workspaceId = null): JsonResponse
     {
         if (! config('integrations.external_vaults.nango.enabled')) {
@@ -119,7 +193,9 @@ class IntegrationController extends Controller
             ? [config('integrations.workspace_model'), $workspaceId]
             : [get_class($user), $user->getAuthIdentifier()];
 
-        $providerConfigKey = $validated['provider_config_key'] ?? $validated['provider'];
+        $providerConfigKey = $validated['provider_config_key']
+            ?? config('integrations.nango_providers.' . $validated['provider'] . '.provider_config_key')
+            ?? $validated['provider'];
         $connectionId = $nango->connectionId($ownerType, $ownerId, $providerConfigKey);
 
         $tags = array_merge($validated['tags'] ?? [], [
@@ -132,12 +208,16 @@ class IntegrationController extends Controller
             'provider_config_key' => $providerConfigKey,
         ]);
 
-        $session = $nango->createConnectSession(
-            $tags,
-            $validated['allowed_integrations'] ?? [$providerConfigKey],
-            $validated['integrations_config_defaults'] ?? [],
-            $validated['overrides'] ?? [],
-        );
+        try {
+            $session = $nango->createConnectSession(
+                $tags,
+                $validated['allowed_integrations'] ?? [$providerConfigKey],
+                $validated['integrations_config_defaults'] ?? [],
+                $validated['overrides'] ?? [],
+            );
+        } catch (RequestException $failure) {
+            return $this->vaultFailure($failure, $validated['provider'], $providerConfigKey);
+        }
 
         return response()->json([
             'success' => true,
@@ -332,7 +412,7 @@ class IntegrationController extends Controller
         } elseif ($type === 'sync') {
             $this->handleNangoSyncWebhook($payload);
         } elseif ($type === 'forward') {
-            $this->handleNangoForwardWebhook($payload);
+            $this->handleNangoForwardWebhook($payload, $request->headers->all());
         }
 
         return response()->json(['success' => true]);
@@ -397,7 +477,7 @@ class IntegrationController extends Controller
         ]);
     }
 
-    protected function handleNangoForwardWebhook(array $payload): void
+    protected function handleNangoForwardWebhook(array $payload, array $headers = []): void
     {
         $integration = Integration::externalVault('nango')
             ->where('vault_connection_id', $payload['connectionId'] ?? null)
@@ -405,6 +485,11 @@ class IntegrationController extends Controller
             ->first();
 
         if (! $integration) {
+            Log::info('Forwarded webhook matched no connection', [
+                'provider_config_key' => $payload['providerConfigKey'] ?? null,
+                'connection_id' => $payload['connectionId'] ?? null,
+            ]);
+
             return;
         }
 
@@ -412,6 +497,13 @@ class IntegrationController extends Controller
         $metadata['last_forwarded_webhook'] = $payload;
 
         $integration->update(['metadata' => $metadata]);
+
+        ProviderWebhookForwarded::dispatch(
+            $integration->refresh(),
+            $payload,
+            (array) ($payload['payload'] ?? []),
+            $headers
+        );
     }
 
     protected function findIntegration(?string $workspaceId, ?int $integrationId): ?Integration
@@ -484,6 +576,7 @@ class IntegrationController extends Controller
         }
 
         $workspaceModel = config('integrations.workspace_model');
+
         // @phpstan-ignore-next-line
         return $user->hasRole('workspace-member', $workspaceModel, $workspaceId)
             // @phpstan-ignore-next-line
@@ -504,5 +597,37 @@ class IntegrationController extends Controller
         $model = new $type();
 
         return $model->newQuery()->find($connected_by_id);
+    }
+
+    /**
+     * The vault answers with its own error shapes, which mean nothing to the
+     * person who pressed Connect. The commonest by far is a provider that was
+     * never set up in the vault, which reads as a bare validation failure.
+     */
+    protected function vaultFailure(RequestException $failure, string $provider, string $providerConfigKey): JsonResponse
+    {
+        $body = (string) $failure->response->body();
+        $name = config('integrations.nango_providers.' . $provider . '.name', Str::headline($provider));
+
+        Log::warning('Nango rejected a connect session', [
+            'provider' => $provider,
+            'provider_config_key' => $providerConfigKey,
+            'status' => $failure->response->status(),
+            'body' => $body,
+        ]);
+
+        if (str_contains($body, 'Integration does not exist')) {
+            return response()->json([
+                'success' => false,
+                'message' => $name . ' is not available yet. It has not been set up in the connection vault.',
+                'reason' => 'provider_not_configured',
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Could not start the connection to ' . $name . '. Please try again.',
+            'reason' => 'vault_error',
+        ], 422);
     }
 }
