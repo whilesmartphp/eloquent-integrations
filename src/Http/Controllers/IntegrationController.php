@@ -176,7 +176,7 @@ class IntegrationController extends Controller
             : [get_class($user), $user->getAuthIdentifier()];
 
         $providerConfigKey = $validated['provider_config_key']
-            ?? config('integrations.nango_providers.'.$validated['provider'].'.provider_config_key')
+            ?? config('integrations.nango_providers.' . $validated['provider'] . '.provider_config_key')
             ?? $validated['provider'];
         $connectionId = $nango->connectionId($ownerType, $ownerId, $providerConfigKey);
 
@@ -576,7 +576,7 @@ class IntegrationController extends Controller
     protected function vaultFailure(RequestException $e, string $provider, string $providerConfigKey): JsonResponse
     {
         $body = (string) $e->response->body();
-        $name = config('integrations.nango_providers.'.$provider.'.name', Str::headline($provider));
+        $name = config('integrations.nango_providers.' . $provider . '.name', Str::headline($provider));
 
         Log::warning('Nango rejected a connect session', [
             'provider' => $provider,
@@ -588,14 +588,14 @@ class IntegrationController extends Controller
         if (str_contains($body, 'Integration does not exist')) {
             return response()->json([
                 'success' => false,
-                'message' => $name.' is not available yet. It has not been set up in the connection vault.',
+                'message' => $name . ' is not available yet. It has not been set up in the connection vault.',
                 'reason' => 'provider_not_configured',
             ], 422);
         }
 
         return response()->json([
             'success' => false,
-            'message' => 'Could not start the connection to '.$name.'. Please try again.',
+            'message' => 'Could not start the connection to ' . $name . '. Please try again.',
             'reason' => 'vault_error',
         ], 422);
     }

@@ -3,7 +3,7 @@
   "description": "OAuth and third-party integrations package for Laravel applications",
   "type": "library",
   "license": "MIT",
-  "package-version": "1.0.0",
+  "package-version": "1.1.0",
   "authors": [
     {
       "name": "WhileSmart",

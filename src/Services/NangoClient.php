@@ -35,7 +35,7 @@ class NangoClient
     public function connection(string $connectionId, string $providerConfigKey): ?array
     {
         $response = $this->request()
-            ->get('/connection/'.urlencode($connectionId), [
+            ->get('/connection/' . urlencode($connectionId), [
                 'provider_config_key' => $providerConfigKey,
             ]);
 
